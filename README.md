@@ -158,7 +158,11 @@ cmake -B build -DCSPECTRUM_GUI=OFF
 cmake --build build
 ```
 
-Tested on Windows (MinGW-w64, MSVC) and Linux (GCC, Clang).
+CI builds on Linux (GCC and Clang), macOS (Clang) and Windows (MSVC).
+
+One portability note: MSVC keeps C11 atomics behind 
+even in C11 mode, and the flag only exists from Visual Studio 2022 17.5. CMake
+adds it automatically and fails with a clear message on anything older.
 
 ## Tests
 

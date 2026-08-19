@@ -15,6 +15,20 @@ option(CSPECTRUM_TESTS "Build the unit tests"          ON)
 
 if(MSVC)
     add_compile_options(/W4)
+
+    # MSVC ships <stdatomic.h> but keeps C atomics behind a switch even in C11
+    # mode; without it the header is just an #error. Needs VS 2022 17.5 or
+    # newer (cl 19.35). Older MSVC cannot build the ring buffer at all.
+    if(CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 19.35)
+        add_compile_options(/experimental:c11atomics)
+    else()
+        message(FATAL_ERROR
+            "MSVC ${CMAKE_C_COMPILER_VERSION} has no C11 atomics. "
+            "Use Visual Studio 2022 17.5+, or build with MinGW-w64 or clang-cl.")
+    endif()
+
+    # Stop it complaining about fopen and friends.
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 else()
     add_compile_options(-Wall -Wextra -Wshadow -Wstrict-prototypes)
 endif()

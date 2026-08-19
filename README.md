@@ -160,9 +160,11 @@ cmake --build build
 
 CI builds on Linux (GCC and Clang), macOS (Clang) and Windows (MSVC).
 
-One portability note: MSVC keeps C11 atomics behind 
-even in C11 mode, and the flag only exists from Visual Studio 2022 17.5. CMake
-adds it automatically and fails with a clear message on anything older.
+One portability note: MSVC ships `<stdatomic.h>` but keeps C atomics switched
+off unless you pass `/experimental:c11atomics`, even in C11 mode — and that
+flag only exists from Visual Studio 2022 17.5. CMake adds it automatically, and
+fails configuration with a useful message on anything older instead of dumping
+an `#error` out of a system header.
 
 ## Tests
 

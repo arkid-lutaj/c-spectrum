@@ -13,6 +13,12 @@
 #include <stdio.h>
 #include <string.h>
 
+/* M_PI is not standard C, and MSVC only defines it if you ask before including
+ * math.h. The tests use it freely, so define it here once. */
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 typedef void (*cs_test_fn)(void);
 
 void cs_test_register(const char *name, cs_test_fn fn);

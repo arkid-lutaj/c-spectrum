@@ -1,0 +1,9 @@
+build/
+build-*/
+*.exe
+*.o
+*.a
+*.csv
+!docs/*.csv
+.vscode/
+.idea/

@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C-Spectrum</title>
+<meta name="description" content="Acoustic condition monitoring in C. Listens to a machine, learns what it normally sounds like, and detects a failing bearing.">
+<style>
+  :root {
+    --bg:      #0d1016;
+    --panel:   #131720;
+    --line:    #212834;
+    --text:    #c6d0e0;
+    --dim:     #6c788c;
+    --faint:   #3e4858;
+    --data:    #56b6e0;
+    --data2:   #80d8be;
+    --ok:      #56c494;
+    --warn:    #e2b054;
+    --alarm:   #e8645e;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  header { padding: 72px 0 48px; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 34px; margin: 0 0 4px; letter-spacing: -0.5px; font-weight: 600; }
+  .tagline { color: var(--data2); font-size: 17px; margin: 0 0 20px; }
+  .sub { color: var(--dim); max-width: 660px; margin: 0 0 28px; }
+
+  .links a {
+    display: inline-block; color: var(--text); text-decoration: none;
+    border: 1px solid var(--line); padding: 8px 16px; margin: 0 8px 8px 0;
+    border-radius: 4px; transition: border-color .15s, color .15s;
+  }
+  .links a:hover { border-color: var(--data); color: var(--data); }
+  .links a.primary { border-color: var(--data); color: var(--data); }
+
+  section { padding: 56px 0; border-bottom: 1px solid var(--line); }
+  h2 { font-size: 13px; letter-spacing: 2px; color: var(--dim);
+       text-transform: uppercase; margin: 0 0 8px; font-weight: 500; }
+  h3 { font-size: 22px; margin: 0 0 20px; font-weight: 600; letter-spacing: -0.3px; }
+  p  { max-width: 700px; color: var(--text); }
+  p.note { color: var(--dim); font-size: 13px; }
+
+  /* --- demo --- */
+  .tabs { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
+  .tab {
+    background: var(--panel); border: 1px solid var(--line); color: var(--dim);
+    padding: 8px 16px; border-radius: 4px; cursor: pointer;
+    font-family: var(--mono); font-size: 13px; transition: all .15s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.on { border-color: var(--data); color: var(--data); background: #16202c; }
+
+  .stage {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 6px; overflow: hidden;
+  }
+
+  .readout {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1px; background: var(--line); border-bottom: 1px solid var(--line);
+  }
+  .cell { background: var(--panel); padding: 12px 16px; }
+  .cell .k { font-size: 10px; letter-spacing: 1px; color: var(--dim);
+             text-transform: uppercase; }
+  .cell .v { font-size: 17px; margin-top: 2px; }
+
+  .badge { font-weight: 600; }
+  .s-ok    { color: var(--ok); }
+  .s-alarm { color: var(--alarm); }
+  .s-warning { color: var(--warn); }
+  .s-learning { color: #8296be; }
+
+  canvas { display: block; width: 100%; height: auto; }
+
+  .controls {
+    display: flex; align-items: center; gap: 14px; padding: 12px 16px;
+    border-top: 1px solid var(--line); flex-wrap: wrap;
+  }
+  .controls button {
+    background: transparent; border: 1px solid var(--line); color: var(--text);
+    padding: 6px 14px; border-radius: 4px; cursor: pointer;
+    font-family: var(--mono); font-size: 13px;
+  }
+  .controls button:hover { border-color: var(--data); color: var(--data); }
+  .controls input[type=range] { flex: 1; min-width: 140px; accent-color: var(--data); }
+  .clock { color: var(--dim); font-size: 13px; min-width: 92px; }
+
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; padding: 10px 16px 0;
+            font-size: 11px; color: var(--dim); }
+  .legend span { display: flex; align-items: center; gap: 5px; }
+  .legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+
+  /* --- generic --- */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+
+  pre {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: 16px; overflow-x: auto; font-size: 12.5px; line-height: 1.55;
+    color: var(--text);
+  }
+  code { color: var(--data2); }
+  pre code { color: inherit; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  td, th { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  th { color: var(--dim); font-weight: 500; font-size: 11px;
+       letter-spacing: 1px; text-transform: uppercase; }
+
+  img.shot { width: 100%; border: 1px solid var(--line); border-radius: 6px; display:block; }
+
+  footer { padding: 40px 0 64px; color: var(--faint); font-size: 12px; }
+  footer a { color: var(--dim); }
+
+  .hl { color: var(--alarm); }
+  .ok { color: var(--ok); }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header>
+  <h1>C-Spectrum</h1>
+  <p class="tagline">Hears a bearing starting to fail.</p>
+  <p class="sub">
+    A condition monitoring tool in C11. It listens to a machine, learns what
+    it normally sounds like, and raises an alarm when that changes &mdash; then
+    works out <em>which part</em> of the bearing is producing the noise.
+  </p>
+  <div class="links">
+    <a class="primary" href="https://github.com/arkid-lutaj/c-spectrum">Source on GitHub</a>
+    <a href="https://github.com/arkid-lutaj/c-spectrum/blob/main/docs/DESIGN.md">How it works</a>
+  </div>
+</header>
+
+<section>
+  <h2>Live replay</h2>
+  <h3>Real output, not a mock-up</h3>
+  <p>
+    Every number below came out of the C program. The runs were exported with
+    <code>--json</code> and this page just replays them. Pick a machine and press play.
+  </p>
+
+  <div class="tabs" id="tabs">
+    <button class="tab on" data-run="outer">Outer race fault</button>
+    <button class="tab"    data-run="inner">Inner race fault</button>
+    <button class="tab"    data-run="healthy">Healthy machine</button>
+  </div>
+
+  <div class="stage">
+    <div class="readout">
+      <div class="cell"><div class="k">State</div>
+        <div class="v badge" id="r-state">&mdash;</div></div>
+      <div class="cell"><div class="k">Health</div>
+        <div class="v" id="r-health">&mdash;</div></div>
+      <div class="cell"><div class="k">Time</div>
+        <div class="v" id="r-time">&mdash;</div></div>
+      <div class="cell"><div class="k">Diagnosis</div>
+        <div class="v" id="r-diag">&mdash;</div></div>
+    </div>
+
+    <div class="legend" id="legend"></div>
+    <canvas id="chart" width="1040" height="300"></canvas>
+    <canvas id="env"   width="1040" height="190"></canvas>
+
+    <div class="controls">
+      <button id="play">Pause</button>
+      <input type="range" id="scrub" min="0" max="1000" value="0">
+      <span class="clock" id="clock">0.0 s</span>
+    </div>
+  </div>
+
+  <p class="note" id="caption"></p>
+</section>
+
+<section>
+  <h2>The problem</h2>
+  <h3>A failing bearing doesn't get louder. It starts ticking.</h3>
+  <p>
+    When a rolling element passes over a damaged spot it produces a very short
+    impact. The impact is broadband, and it rings the bearing housing at its
+    structural resonance &mdash; usually a few kHz. Then the next ball arrives
+    and does it again.
+  </p>
+  <p>
+    So there are two problems. The energy is <em>tiny</em> compared to the shaft,
+    the motor and the room, so the overall level barely moves until the damage
+    is severe. And the number you actually want &mdash; how often the impacts
+    repeat, which is what identifies the broken part &mdash; isn't present in
+    the signal as a frequency at all. It's amplitude modulation on a much
+    higher carrier.
+  </p>
+  <p>
+    C-Spectrum solves the first with statistics on features that respond to
+    <em>shape</em> rather than loudness, and the second with envelope
+    demodulation.
+  </p>
+</section>
+
+<section>
+  <h2>Detection</h2>
+  <h3>Six features, one control chart</h3>
+  <p>
+    Every 512 samples the signal is reduced to six numbers. They're chosen
+    because they fail differently, so the pattern of which ones move says
+    something about what kind of fault it is.
+  </p>
+  <table>
+    <tr><th>Feature</th><th>Measures</th><th>Responds to</th></tr>
+    <tr><td>Level</td><td>overall RMS in dB</td><td>almost anything, but late</td></tr>
+    <tr><td class="hl">Crest factor</td><td>peak / RMS</td><td>impacts, long before the level moves</td></tr>
+    <tr><td class="hl">Kurtosis</td><td>how spiky the signal is</td><td>impacts</td></tr>
+    <tr><td>Centroid</td><td>where the energy sits</td><td>wear</td></tr>
+    <tr><td>Flatness</td><td>tonal vs broadband</td><td>rubs, cavitation</td></tr>
+    <tr><td>HF ratio</td><td>energy above &frac14; Nyquist</td><td>friction, impacts</td></tr>
+  </table>
+  <p style="margin-top:20px">
+    Each one is learned for ten seconds, then frozen and tracked on an EWMA
+    control chart. Freezing matters: the obvious mistake is to keep updating
+    the baseline forever, because then a developing fault gradually teaches the
+    detector that the fault is normal and the alarm quietly clears itself while
+    the machine keeps failing.
+  </p>
+</section>
+
+<section>
+  <h2>Diagnosis</h2>
+  <h3>Envelope analysis names the part</h3>
+  <div class="grid2">
+    <div>
+      <p>
+        Bandpass the resonance, rectify, low-pass, decimate, then FFT what's
+        left. Rectifying folds the modulation back down to baseband, so the
+        impact repetition rate reappears as a peak with a series of harmonics.
+      </p>
+      <p>
+        That rate is then matched against the frequencies computed from the
+        bearing's geometry &mdash; number of balls, ball and pitch diameter,
+        contact angle, shaft speed. For a 6205 at 1797&nbsp;rpm those are
+        BPFO&nbsp;107.4&nbsp;Hz and BPFI&nbsp;162.2&nbsp;Hz, which is what the
+        comb in the picture lines up with.
+      </p>
+      <p class="note">
+        Three gates before it will name anything: the envelope has to look
+        genuinely periodic (peak/median &ge; 8, versus about 3 for a healthy
+        machine), at least two harmonics have to stand out, and the match has
+        to account for a real share of the band. Without them, four candidates
+        and enough time will eventually find a convincing pattern in noise.
+      </p>
+    </div>
+    <div>
+      <img class="shot" src="assets/4-envelope.png"
+           alt="Envelope spectrum showing evenly spaced peaks aligned with the marked BPFO frequency">
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Interface</h2>
+  <h3>Five views over the same engine</h3>
+  <div class="grid2">
+    <div><img class="shot" src="assets/5-chart.png" alt="EWMA control chart"></div>
+    <div><img class="shot" src="assets/3-waterfall.png" alt="Spectrogram waterfall"></div>
+  </div>
+  <p class="note" style="margin-top:14px">
+    Left: the control chart the alarm decision comes from &mdash; kurtosis in
+    red leaving the band while the rest stay inside. Right: the waterfall,
+    where you can watch the housing resonance light up as the fault develops.
+    Both screenshots are generated by the program itself with
+    <code>--capture</code>, so they can't drift out of date.
+  </p>
+</section>
+
+<section>
+  <h2>Try it</h2>
+  <h3>No hardware needed</h3>
+  <p>
+    There's a machine simulator built in, with real fault physics &mdash;
+    impulse trains through a resonator, load-zone modulation on inner race
+    faults, and a bit of slip on the impact timing. It exists so the detector
+    can be tested against a known answer.
+  </p>
+<pre><code>git clone https://github.com/arkid-lutaj/c-spectrum
+cd c-spectrum
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+
+./build/cspectrum --analyse --synth outer --rpm 1797</code></pre>
+<pre><code> final state   <span class="hl">ALARM</span>
+ alarms        1
+ first alarm   20.3 s
+
+   feature                mean        sigma        final       ewma
+   rms_db             -31.0945       2.3247     -29.1988      +0.84
+   crest                3.4647       0.5428       2.7549      +0.92
+   kurtosis             2.5671       0.2765       2.7031      +3.44  <span class="hl">&lt;-- tripped</span>
+   centroid          3208.9250     816.6946    3277.5757      +0.07
+   flatness             0.3882       0.0495       0.3850      -0.05
+   hf_ratio             0.1991       0.0517       0.1622      -0.65
+
+ envelope analysis (2000-6000 Hz band)
+   verdict         <span class="hl">outer race at 107.4 Hz</span>
+   harmonics       4</code></pre>
+  <p class="note">
+    Drop <code>--analyse</code> for the window. <code>--wav file.wav</code> to
+    analyse a recording, <code>--mic</code> to listen live.
+  </p>
+</section>
+
+<section>
+  <h2>Engineering</h2>
+  <h3>The parts worth arguing about</h3>
+  <table>
+    <tr>
+      <td style="width:32%"><strong>Fixed-hop analysis</strong></td>
+      <td>One FFT per 512 samples, never per rendered frame. Otherwise every
+          statistic downstream silently depends on the frame rate.</td>
+    </tr>
+    <tr>
+      <td><strong>Lock-free ring buffer</strong></td>
+      <td>C11 atomics with release/acquire, cache-line padded. <code>volatile</code>
+          is not enough &mdash; it emits no barrier, so it works on x86 and
+          races on ARM.</td>
+    </tr>
+    <tr>
+      <td><strong>Filters designed at runtime</strong></td>
+      <td>From (cutoff, sample rate, Q), in double precision. Hardcoded
+          coefficients silently mean a different cutoff at a different sample
+          rate.</td>
+    </tr>
+    <tr>
+      <td><strong>Frozen baseline</strong></td>
+      <td>With optional slow adaptation that pauses whenever the state isn't
+          OK, so a fault can never be learned as normal.</td>
+    </tr>
+    <tr>
+      <td><strong>33 tests</strong></td>
+      <td>Against values known from theory: &radic;2 for the crest factor of a
+          sine, &minus;3.01&nbsp;dB at a cutoff measured five ways,
+          107.36&nbsp;Hz for a 6205. Plus zero false alarms over ten simulated
+          minutes.</td>
+    </tr>
+    <tr>
+      <td><strong>No GUI dependency</strong></td>
+      <td>The core, CLI and tests build with <code>-DCSPECTRUM_GUI=OFF</code>
+          &mdash; no display, no raylib. That's what CI runs on four
+          compilers.</td>
+    </tr>
+  </table>
+</section>
+
+<section style="border-bottom:none">
+  <h2>Honestly</h2>
+  <h3>What this is and isn't</h3>
+  <p>
+    A microphone in air is a worse sensor than an accelerometer bolted to a
+    bearing housing: it hears the whole room and can't see much below a few
+    tens of Hz. The signal processing is identical either way and everything
+    here works on an accelerometer stream, but the sensor is the compromise.
+  </p>
+  <p>
+    The numbers on this page come from the built-in simulator, not from a real
+    failing bearing. It models the physics rather than faking the output, which
+    is what makes it useful for testing &mdash; but it is a simulation, and
+    that's worth saying plainly.
+  </p>
+  <p>
+    There's no order tracking, so it assumes roughly constant shaft speed. The
+    envelope band is set by hand rather than found automatically. It tells you
+    a fault is present, not how long the bearing has left.
+  </p>
+</section>
+
+<footer>
+  MIT licensed &middot; <a href="https://github.com/arkid-lutaj/c-spectrum">github.com/arkid-lutaj/c-spectrum</a>
+  &middot; built with raylib, KissFFT and miniaudio
+</footer>
+
+</div>
+
+<script>
+"use strict";
+
+const RUNS = {};
+const FEAT_COLORS = ["#6e8cbe", "#e0a860", "#e86e68", "#80c8a8", "#a88cd0", "#60bad8"];
+
+let cur = null;        // current run data
+let idx = 0;           // current series index
+let playing = true;
+let lastT = 0;
+
+const $ = (id) => document.getElementById(id);
+
+const chart = $("chart"), env = $("env");
+const cx = chart.getContext("2d"), ex = env.getContext("2d");
+
+/* Crisp lines on high-dpi screens: back the canvas with more pixels than the
+   css size, then scale the context once. */
+function fitCanvas(cv, ctx) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = cv.getBoundingClientRect();
+  if (!rect.width) return 1;
+  cv.width  = Math.round(rect.width * dpr);
+  cv.height = Math.round(parseInt(cv.dataset.h || cv.height / dpr, 10) * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return rect.width;
+}
+chart.dataset.h = 300;
+env.dataset.h = 190;
+
+const CSS = getComputedStyle(document.documentElement);
+const col = (n) => CSS.getPropertyValue(n).trim();
+
+function drawChart() {
+  const w = fitCanvas(chart, cx);
+  const h = 300;
+  if (!cur || !w) return;
+
+  cx.clearRect(0, 0, w, h);
+
+  const pad = { l: 8, r: 8, t: 26, b: 22 };
+  const pw = w - pad.l - pad.r;
+  const ph = h - pad.t - pad.b;
+  const mid = pad.t + ph / 2;
+
+  // symmetric scale, same convention as the app
+  let span = 3;
+  for (const p of cur.series)
+    for (const v of p.ewma) span = Math.max(span, Math.abs(v));
+  span *= 1.15;
+  const sc = (ph / 2) / span;
+
+  const limit = cur.series.length ? cur.series[Math.min(idx, cur.series.length-1)].limit : 0;
+
+  // control band
+  if (limit > 0) {
+    const y0 = mid - limit * sc, y1 = mid + limit * sc;
+    cx.fillStyle = "rgba(86,196,148,0.06)";
+    cx.fillRect(pad.l, y0, pw, y1 - y0);
+    cx.strokeStyle = "rgba(226,176,84,0.55)";
+    cx.setLineDash([4, 4]); cx.lineWidth = 1;
+    cx.beginPath();
+    cx.moveTo(pad.l, y0); cx.lineTo(pad.l + pw, y0);
+    cx.moveTo(pad.l, y1); cx.lineTo(pad.l + pw, y1);
+    cx.stroke(); cx.setLineDash([]);
+    cx.fillStyle = col("--warn"); cx.font = "10px ui-monospace, monospace";
+    cx.fillText("control limit", pad.l + pw - 74, y0 - 5);
+  }
+
+  cx.strokeStyle = col("--line");
+  cx.beginPath(); cx.moveTo(pad.l, mid); cx.lineTo(pad.l + pw, mid); cx.stroke();
+
+  // one line per feature, up to the current index
+  const n = Math.max(2, idx + 1);
+  const xAt = (i) => pad.l + (i / (cur.series.length - 1)) * pw;
+
+  for (let k = 0; k < 6; k++) {
+    cx.strokeStyle = FEAT_COLORS[k];
+    cx.lineWidth = 1.1;
+    cx.globalAlpha = 0.85;
+    cx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const y = mid - cur.series[i].ewma[k] * sc;
+      i ? cx.lineTo(xAt(i), y) : cx.moveTo(xAt(i), y);
+    }
+    cx.stroke();
+  }
+  cx.globalAlpha = 1;
+
+  // playhead
+  const px = xAt(idx);
+  cx.strokeStyle = "rgba(198,208,224,0.35)";
+  cx.beginPath(); cx.moveTo(px, pad.t); cx.lineTo(px, pad.t + ph); cx.stroke();
+
+  // event markers
+  cx.font = "10px ui-monospace, monospace";
+  for (const ev of cur.events) {
+    if (ev.to !== "alarm") continue;
+    const frac = ev.t / cur.meta.duration_sec;
+    const ex_ = pad.l + frac * pw;
+    cx.strokeStyle = col("--alarm");
+    cx.setLineDash([2, 3]);
+    cx.beginPath(); cx.moveTo(ex_, pad.t); cx.lineTo(ex_, pad.t + ph); cx.stroke();
+    cx.setLineDash([]);
+    cx.fillStyle = col("--alarm");
+    cx.fillText("alarm " + ev.t.toFixed(1) + "s", Math.min(ex_ + 4, w - 70), pad.t + 11);
+  }
+
+  // axis
+  cx.fillStyle = col("--faint");
+  cx.fillText("0 s", pad.l, h - 7);
+  cx.fillText(cur.meta.duration_sec.toFixed(0) + " s",
+              pad.l + pw - 26, h - 7);
+  cx.fillText("EWMA control chart", pad.l, 14);
+}
+
+function drawEnv() {
+  const w = fitCanvas(env, ex);
+  const h = 190;
+  if (!cur || !w) return;
+
+  ex.clearRect(0, 0, w, h);
+
+  const pad = { l: 8, r: 8, t: 22, b: 22 };
+  const pw = w - pad.l - pad.r;
+  const ph = h - pad.t - pad.b;
+
+  const spec = cur.envelope.spectrum || [];
+  const binHz = cur.envelope.bin_hz || 1;
+  const fMax = 600;
+
+  ex.fillStyle = col("--faint");
+  ex.font = "10px ui-monospace, monospace";
+  ex.fillText("envelope spectrum", pad.l, 14);
+
+  // grid every 100 Hz
+  ex.strokeStyle = col("--line");
+  for (let f = 0; f <= fMax; f += 100) {
+    const gx = pad.l + (f / fMax) * pw;
+    ex.beginPath(); ex.moveTo(gx, pad.t); ex.lineTo(gx, pad.t + ph); ex.stroke();
+    ex.fillStyle = col("--faint");
+    ex.fillText(String(f), gx + 3, h - 7);
+  }
+
+  // predicted bearing frequencies
+  const d = cur.defect_hz;
+  if (d && d.valid) {
+    const marks = [
+      [d.shaft, "1x"], [d.ftf, "FTF"], [d.bsf * 2, "BSF"],
+      [d.bpfo, "BPFO"], [d.bpfi, "BPFI"],
+    ];
+    for (const [hz, nm] of marks) {
+      if (hz <= 0 || hz > fMax) continue;
+      const hit = cur.envelope.kind !== "none" &&
+                  Math.abs(hz - cur.envelope.match_hz) < 0.5;
+      const gx = pad.l + (hz / fMax) * pw;
+      ex.strokeStyle = hit ? col("--alarm") : "rgba(108,120,140,0.45)";
+      ex.setLineDash([3, 4]);
+      ex.beginPath(); ex.moveTo(gx, pad.t); ex.lineTo(gx, pad.t + ph); ex.stroke();
+      ex.setLineDash([]);
+      ex.fillStyle = hit ? col("--alarm") : col("--dim");
+      ex.fillText(nm, gx + 3, pad.t + 10);
+
+      if (hit) {
+        for (let hn = 2; hn <= 4; hn++) {
+          const hz2 = hz * hn;
+          if (hz2 > fMax) break;
+          const hx = pad.l + (hz2 / fMax) * pw;
+          ex.strokeStyle = "rgba(232,100,94,0.4)";
+          ex.setLineDash([2, 4]);
+          ex.beginPath();
+          ex.moveTo(hx, pad.t + ph * 0.45); ex.lineTo(hx, pad.t + ph);
+          ex.stroke(); ex.setLineDash([]);
+        }
+      }
+    }
+  }
+
+  // the spectrum
+  const nShow = Math.min(spec.length, Math.floor(fMax / binHz));
+  ex.strokeStyle = col("--data2");
+  ex.lineWidth = 1;
+  ex.beginPath();
+  for (let px = 0; px < pw; px++) {
+    const k0 = Math.floor((px / pw) * nShow);
+    const k1 = Math.max(k0 + 1, Math.floor(((px + 1) / pw) * nShow));
+    let m = 0;
+    for (let k = k0; k < k1 && k < nShow; k++) m = Math.max(m, spec[k]);
+    const x = pad.l + px;
+    ex.moveTo(x, pad.t + ph);
+    ex.lineTo(x, pad.t + ph - m * ph * 0.92);
+  }
+  ex.stroke();
+}
+
+function updateReadout() {
+  if (!cur) return;
+  const p = cur.series[Math.min(idx, cur.series.length - 1)];
+
+  const st = p.state;
+  const el = $("r-state");
+  el.textContent = st.toUpperCase();
+  el.className = "v badge s-" + st;
+
+  $("r-health").textContent = p.health.toFixed(2);
+  $("r-time").textContent   = p.t.toFixed(1) + " s";
+  $("clock").textContent    = p.t.toFixed(1) + " s";
+
+  // The diagnosis is the end-of-run result, so only reveal it once the
+  // playhead has reached the point where the alarm actually fired.
+  const alarmT = (cur.events.find(e => e.to === "alarm") || {}).t;
+  const diag = $("r-diag");
+  if (cur.envelope.kind !== "none" && alarmT !== undefined && p.t >= alarmT) {
+    diag.textContent = cur.envelope.kind + " @ " +
+                       cur.envelope.match_hz.toFixed(1) + " Hz";
+    diag.className = "v s-alarm";
+  } else if (p.state === "learning") {
+    diag.textContent = "learning...";
+    diag.className = "v s-learning";
+  } else {
+    diag.textContent = "no impacts";
+    diag.className = "v";
+  }
+
+  $("scrub").value = Math.round((idx / (cur.series.length - 1)) * 1000);
+}
+
+function buildLegend() {
+  const names = cur.features.map(f => f.name);
+  $("legend").innerHTML = names.map((n, i) =>
+    `<span><i style="background:${FEAT_COLORS[i]}"></i>${n}</span>`).join("");
+}
+
+function setCaption() {
+  const m = cur.meta;
+  const alarm = cur.events.find(e => e.to === "alarm");
+  let s = `${m.duration_sec.toFixed(0)} s at ${m.sample_rate} Hz, FFT ${m.fft_size}, hop ${m.hop_size} `
+        + `(${m.blocks_per_sec.toFixed(1)} blocks/s). Baseline learned over the first ${m.baseline_sec} s, `
+        + `control limit ${m.sigma_threshold}σ, λ ${m.ewma_lambda}. `;
+  s += alarm
+     ? `Alarm at ${alarm.t.toFixed(1)} s — ${alarm.detail}.`
+     : `No alarms.`;
+  $("caption").textContent = s;
+}
+
+function redraw() { drawChart(); drawEnv(); updateReadout(); }
+
+function tick(t) {
+  if (!lastT) lastT = t;
+  const dt = (t - lastT) / 1000;
+  lastT = t;
+
+  if (playing && cur) {
+    // The series spans duration_sec, so this many points per real second.
+    // 4x speed, so a 45 second run takes about 11 seconds to watch.
+    const pointsPerSec = cur.series.length / cur.meta.duration_sec;
+    idx += pointsPerSec * dt * 4;
+    if (idx >= cur.series.length - 1) { idx = cur.series.length - 1; playing = false; $("play").textContent = "Replay"; }
+    redraw();
+  }
+  requestAnimationFrame(tick);
+}
+
+async function load(name) {
+  if (!RUNS[name]) {
+    const r = await fetch(`trace-${name}.json`);
+    if (!r.ok) throw new Error(`could not load trace-${name}.json`);
+    RUNS[name] = await r.json();
+  }
+  cur = RUNS[name];
+  idx = 0;
+  playing = true;
+  $("play").textContent = "Pause";
+  buildLegend();
+  setCaption();
+  redraw();
+}
+
+$("tabs").addEventListener("click", (e) => {
+  const b = e.target.closest(".tab");
+  if (!b) return;
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("on", t === b));
+  load(b.dataset.run).catch(err => { $("caption").textContent = err.message; });
+});
+
+$("play").addEventListener("click", () => {
+  if (!cur) return;
+  if (idx >= cur.series.length - 1) idx = 0;
+  playing = !playing;
+  $("play").textContent = playing ? "Pause" : "Play";
+});
+
+$("scrub").addEventListener("input", (e) => {
+  if (!cur) return;
+  playing = false;
+  $("play").textContent = "Play";
+  idx = (e.target.value / 1000) * (cur.series.length - 1);
+  redraw();
+});
+
+window.addEventListener("resize", redraw);
+
+load("outer").catch(err => { $("caption").textContent = err.message; });
+requestAnimationFrame(tick);
+</script>
+
+</body>
+</html>

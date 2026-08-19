@@ -1,0 +1,101 @@
+name: build and test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # The core, the CLI and the tests, with no window. No display and no X11
+  # headers needed, so this is quick and it is what proves the analysis code
+  # has no GUI dependency.
+  core:
+    name: core (${{ matrix.os }}, ${{ matrix.cc }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  cc: gcc,   cxx: g++ }
+          - { os: ubuntu-latest,  cc: clang, cxx: clang++ }
+          - { os: windows-latest, cc: '',    cxx: '' }
+          - { os: macos-latest,   cc: clang, cxx: clang++ }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: configure
+        env:
+          CC: ${{ matrix.cc }}
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCSPECTRUM_GUI=OFF
+
+      - name: build
+        run: cmake --build build --config Release --parallel
+
+      - name: test
+        run: ctest --test-dir build --build-config Release --output-on-failure
+
+      # Check the tool actually does its job, not just that it links. The
+      # exit code is 3 when a run ends in an alarm, so a fault must give 3
+      # and a healthy machine must give 0.
+      - name: detects a fault
+        shell: bash
+        run: |
+          BIN=$(find build -name 'cspectrum' -o -name 'cspectrum.exe' | head -1)
+          echo "using $BIN"
+
+          set +e
+          "$BIN" --analyse --synth outer --rpm 1797 --duration 40 --quiet > outer.txt
+          rc=$?
+          set -e
+          cat outer.txt
+          if [ "$rc" != "3" ]; then echo "::error::expected an alarm (exit 3), got $rc"; exit 1; fi
+          grep -q "outer race" outer.txt || { echo "::error::did not diagnose the outer race"; exit 1; }
+
+      - name: leaves a healthy machine alone
+        shell: bash
+        run: |
+          BIN=$(find build -name 'cspectrum' -o -name 'cspectrum.exe' | head -1)
+          "$BIN" --analyse --synth healthy --rpm 1797 --duration 45 --quiet > healthy.txt
+          cat healthy.txt
+          grep -q "alarms        0" healthy.txt || { echo "::error::false alarm on a healthy machine"; exit 1; }
+
+  # Full build including raylib, to make sure the GUI still compiles.
+  gui:
+    name: gui (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest ]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: x11 headers
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxrandr-dev libxinerama-dev \
+                                  libxcursor-dev libxi-dev libgl1-mesa-dev
+
+      - name: configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCSPECTRUM_GUI=ON
+
+      - name: build
+        run: cmake --build build --config Release --parallel
+
+  # Warnings are errors here rather than in the normal build, so a warning
+  # gets noticed without making the project annoying to hack on locally.
+  strict:
+    name: strict warnings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: configure
+        run: >
+          cmake -B build -DCSPECTRUM_GUI=OFF
+          -DCMAKE_C_FLAGS="-Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -Werror"
+      - name: build
+        run: cmake --build build --parallel

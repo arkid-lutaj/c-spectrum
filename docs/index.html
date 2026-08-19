@@ -401,11 +401,19 @@ const RUNS = {};
 const FEAT_COLORS = ["#6e8cbe", "#e0a860", "#e86e68", "#80c8a8", "#a88cd0", "#60bad8"];
 
 let cur = null;        // current run data
-let idx = 0;           // current series index
+let idx = 0;           // playhead, fractional so playback is smooth
 let playing = true;
 let lastT = 0;
 
 const $ = (id) => document.getElementById(id);
+
+/* idx advances by fractional amounts, so it must be floored and clamped
+   before it is ever used to index the series. */
+function at() {
+  if (!cur || !cur.series.length) return null;
+  const i = Math.max(0, Math.min(cur.series.length - 1, Math.floor(idx)));
+  return cur.series[i];
+}
 
 const chart = $("chart"), env = $("env");
 const cx = chart.getContext("2d"), ex = env.getContext("2d");
@@ -446,7 +454,8 @@ function drawChart() {
   span *= 1.15;
   const sc = (ph / 2) / span;
 
-  const limit = cur.series.length ? cur.series[Math.min(idx, cur.series.length-1)].limit : 0;
+  const here = at();
+  const limit = here ? here.limit : 0;
 
   // control band
   if (limit > 0) {
@@ -466,8 +475,8 @@ function drawChart() {
   cx.strokeStyle = col("--line");
   cx.beginPath(); cx.moveTo(pad.l, mid); cx.lineTo(pad.l + pw, mid); cx.stroke();
 
-  // one line per feature, up to the current index
-  const n = Math.max(2, idx + 1);
+  // one line per feature, up to the playhead
+  const n = Math.max(2, Math.floor(idx) + 1);
   const xAt = (i) => pad.l + (i / (cur.series.length - 1)) * pw;
 
   for (let k = 0; k < 6; k++) {
@@ -590,8 +599,8 @@ function drawEnv() {
 }
 
 function updateReadout() {
-  if (!cur) return;
-  const p = cur.series[Math.min(idx, cur.series.length - 1)];
+  const p = at();
+  if (!p) return;
 
   const st = p.state;
   const el = $("r-state");

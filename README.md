@@ -2,7 +2,7 @@
 
 **Listens to a machine, learns what it normally sounds like, and tells you when a bearing starts to fail.**
 
-Written in C11. Real-time DSP, statistical process control, and envelope analysis, in about 3,500 lines with no dependencies beyond a FFT and an audio backend.
+Written in C11 — real-time DSP, statistical process control and envelope analysis in about 4,900 lines, with 1,400 more of tests. The analysis core depends only on a FFT (KissFFT) and an audio backend (miniaudio); raylib is used for the window and is optional.
 
 [**Live demo**](https://arkid-lutaj.github.io/c-spectrum/) · [**How it works**](docs/DESIGN.md)
 

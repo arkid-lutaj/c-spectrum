@@ -13,6 +13,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+/* The coefficients below are the standard published values for each window. */
 static void build_window(CsAnalysis *a)
 {
     const int   N = a->cfg.fft_size;

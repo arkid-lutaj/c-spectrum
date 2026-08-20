@@ -541,10 +541,17 @@ Everything from `cs_engine` down has no dependency on the window and does no hea
 
 ### Bundled libraries
 
-Two libraries are vendored into `deps/`, unmodified, with their copyright notices intact:
+Two libraries are vendored into `deps/`. Both are unmodified and keep their copyright notices.
 
-- **KissFFT** by Mark Borgerding, BSD 3-Clause. The full licence is in `deps/kissfft/COPYING` and every file carries its SPDX identifier. Used for the real to complex FFT.
-- **miniaudio** by David Reid, public domain or MIT-0 at your choice. The full licence text is at the end of `deps/miniaudio/miniaudio.h`. Used for microphone capture and for decoding audio files.
+**KissFFT** by Mark Borgerding, BSD 3-Clause. Used for the real to complex FFT. The full licence is in `deps/kissfft/COPYING` and every file carries its SPDX identifier. The copy here predates the LoongArch SIMD support that upstream added later; apart from that and one trailing space upstream has since removed, it is identical to the published source, and no line exists in this copy that is not in upstream.
+
+**miniaudio** v0.11.25 by David Reid, public domain or MIT-0, your choice. Used for microphone capture and for decoding audio files. The full licence text is at the end of `deps/miniaudio/miniaudio.h`. It is byte for byte identical to the upstream release, which you can check for yourself:
+
+```bash
+curl -sL https://raw.githubusercontent.com/mackron/miniaudio/refs/tags/0.11.25/miniaudio.h \
+  | tr -d '\r' | sha256sum
+tr -d '\r' < deps/miniaudio/miniaudio.h | sha256sum
+```
 
 **raylib** by Ramon Santamaria, zlib licence, is downloaded by CMake when the window is enabled and is not stored in this repository. **Emscripten** compiles the WebAssembly build and is not stored here either.
 
@@ -552,9 +559,16 @@ Two libraries are vendored into `deps/`, unmodified, with their copyright notice
 
 None of the underlying techniques are mine, and it is worth being clear about which parts are established practice and which parts are just this program.
 
-The filter design equations are the standard bilinear transform formulas from Robert Bristow-Johnson's widely circulated audio EQ cookbook. Envelope analysis for bearing diagnosis is long established practice in vibration monitoring; Randall and Antoni's tutorial in Mechanical Systems and Signal Processing, 2011, is the reference I worked from. The bearing defect frequency equations are standard and appear in any vibration analysis text. The exponentially weighted moving average control chart, including the time varying control limit, is from statistical quality control, and Montgomery's textbook is the usual reference. The online variance algorithm is Welford's, published in 1962. The 6205 bearing geometry and the frequencies used to check it come from the Case Western Reserve University Bearing Data Center, which publishes its test rig details.
+- The filter design equations are the standard bilinear transform formulas from Robert Bristow-Johnson's widely circulated audio EQ cookbook.
+- The window function coefficients, Hann, Hamming, Blackman-Harris and flat top, are the standard published values.
+- Envelope analysis for bearing diagnosis is long established practice in vibration monitoring. Randall and Antoni's tutorial in Mechanical Systems and Signal Processing, 2011, is the reference I worked from.
+- The bearing defect frequency equations are standard and appear in any vibration analysis text.
+- The exponentially weighted moving average control chart, including the time varying control limit, comes from statistical quality control. Montgomery's textbook is the usual reference.
+- The online variance algorithm is Welford's, published in 1962.
+- The random number generator in the simulator is xorshift32, from Marsaglia's 2003 paper.
+- The 6205 bearing geometry, and the defect frequencies used to check the formulas, come from the Case Western Reserve University Bearing Data Center, which publishes its test rig details.
 
-What is mine is the code: how those methods are put together, the fixed hop architecture, the choice and combination of the six features, the gating on the envelope match, the simulator, and the tests. All of it was written for this project. No code was copied from other projects, and the two vendored libraries above are the only third party source in the tree.
+Those are all published methods, and using them is the normal way this kind of software gets built. What is mine is the code: how they are put together, the fixed hop architecture, the choice and combination of the six features, the gating on the envelope match, the simulator, the interface, and the tests. All of it was written for this project. No source was copied from another codebase, and the two vendored libraries above are the only third party code in the tree.
 
 ### Licence
 

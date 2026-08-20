@@ -47,9 +47,10 @@ CsSynthConfig cs_synth_default(void)
     return c;
 }
 
-/* xorshift32. Small, fast, and identical on every platform, which is the
- * whole point: rand() differs between libcs and would make the tests
- * non-portable. */
+/* xorshift32, from Marsaglia's 2003 paper. Small, fast, and identical on
+ * every platform, which is the whole point here: rand() differs between C
+ * libraries and would make the tests mean different things on different
+ * machines. */
 static unsigned xr(unsigned *s)
 {
     unsigned x = *s;

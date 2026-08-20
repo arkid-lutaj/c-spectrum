@@ -130,12 +130,12 @@
       <div class="meter">
         <span class="name">loudness</span>
         <span class="track"><span class="fill" id="m-level"></span></span>
-        <span class="val" id="v-level">–</span>
+        <span class="val" id="v-level">-</span>
       </div>
       <div class="meter">
         <span class="name">spikiness</span>
         <span class="track"><span class="fill" id="m-spike"></span></span>
-        <span class="val" id="v-spike">–</span>
+        <span class="val" id="v-spike">-</span>
       </div>
     </div>
 
@@ -167,19 +167,19 @@
     <p>
       This is the real thing, not a lookalike. The signal processing is the
       C code from <a href="https://github.com/arkid-lutaj/c-spectrum">C-Spectrum</a>
-      compiled to WebAssembly — same FFT, same filters, same envelope
+      compiled to WebAssembly , same FFT, same filters, same envelope
       analysis that finds a bearing defect frequency.
     </p>
     <p>
       <strong>Knock rate</strong> comes from envelope demodulation: it band-passes
       the high frequencies, rectifies, and transforms what's left, which turns
       "a resonance being struck repeatedly" back into a plain number.
-      <strong>Spikiness</strong> is kurtosis — how much the signal is made of
+      <strong>Spikiness</strong> is kurtosis , how much the signal is made of
       sharp peaks rather than a steady hum.
     </p>
     <p>
       Nothing leaves your machine; the audio is processed in the page.
-      <a href="../">The serious version</a> ·
+      <a href="../">The serious version</a> *
       <a href="https://github.com/arkid-lutaj/c-spectrum">source</a>
     </p>
   </footer>
@@ -435,7 +435,7 @@ function decide() {
   // fan around 2.5, and real impacts run 5 and up.
   if (prom > 10 && spike > 3.2 && hz >= 3 && hz <= 400) {
     const perMin = Math.round(hz * 60);
-    setVerdict("Knocking", `${hz.toFixed(1)} times a second · ${perMin} per minute`, "var(--bad)");
+    setVerdict("Knocking", `${hz.toFixed(1)} times a second * ${perMin} per minute`, "var(--bad)");
     return;
   }
 
@@ -452,7 +452,7 @@ function decideLearned() {
   if (st === 0) {
     const p = api.progress();
     $("learnfill").style.width = (p * 100).toFixed(0) + "%";
-    setVerdict("Learning", "Keep it running just like this…", "var(--cool)");
+    setVerdict("Learning", "Keep it running just like this...", "var(--cool)");
     return;
   }
   $("learnbar").classList.remove("on");
@@ -460,8 +460,8 @@ function decideLearned() {
   const names = ["loudness", "peakiness", "spikiness", "pitch", "roughness", "hiss"];
   const w = api.worst();
 
-  if (st === 3)      setVerdict("Changed!", `That's different — mostly the ${names[w]}.`, "var(--bad)");
-  else if (st === 2) setVerdict("Hmm", `Drifting a bit — the ${names[w]}.`, "var(--busy)");
+  if (st === 3)      setVerdict("Changed!", `That's different , mostly the ${names[w]}.`, "var(--bad)");
+  else if (st === 2) setVerdict("Hmm", `Drifting a bit , the ${names[w]}.`, "var(--busy)");
   else               setVerdict("Same as before", "Sounds like what it learned.", "var(--good)");
 }
 
@@ -528,7 +528,7 @@ function drawKnock() {
     g.fillStyle = "#3a4453";
     g.font = "13px system-ui, sans-serif";
     g.textAlign = "center";
-    g.fillText(running ? "listening…" : "", w / 2, h / 2 + 4);
+    g.fillText(running ? "listening..." : "", w / 2, h / 2 + 4);
     g.textAlign = "left";
     return;
   }
@@ -618,7 +618,7 @@ function frame() {
 
     const lvlFrac = (latest.level + 80) / 80;
     setMeter("m-level", "v-level", lvlFrac,
-             latest.level > -119 ? latest.level.toFixed(0) + " dB" : "–",
+             latest.level > -119 ? latest.level.toFixed(0) + " dB" : "-",
              lvlFrac > 0.75 ? "var(--busy)" : "var(--cool)");
 
     const spikeFrac = (latest.spike - 1.5) / 12;

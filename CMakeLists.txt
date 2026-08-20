@@ -115,12 +115,6 @@ if(CSPECTRUM_GUI)
     target_sources(cspectrum PRIVATE src/cs_gui.c)
     target_compile_definitions(cspectrum PRIVATE CS_WITH_GUI)
     target_link_libraries(cspectrum PRIVATE raylib)
-
-    add_custom_command(TARGET cspectrum POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-                ${CMAKE_SOURCE_DIR}/shaders
-                $<TARGET_FILE_DIR:cspectrum>/shaders
-        COMMENT "copying shaders")
 endif()
 
 # ---- tests ------------------------------------------------------------------

@@ -137,7 +137,7 @@ console.log("a bearing knocking 107 times a second");
   const imp = impacts(107, 3800, 620, 0.55, 0.015);
   const r = feed((t) => (0.05 * Math.sin(2 * Math.PI * 30 * t) +
                          0.02 * Math.sin(2 * Math.PI * 60 * t) + imp(t)) * 0.8, 6);
-  check(r.verdict === "Knocking", `says "${r.verdict}" — ${r.detail}`);
+  check(r.verdict === "Knocking", `says "${r.verdict}" , ${r.detail}`);
   check(Math.abs(r.knockHz - 107) < 8, `rate ${r.knockHz.toFixed(1)} is about 107`);
 }
 
@@ -145,7 +145,7 @@ console.log("\nslow tapping, 6 times a second");
 {
   seed = 55 >>> 0;
   const r = feed(impacts(6, 2500, 300, 0.6, 0.01), 8);
-  check(r.verdict === "Knocking", `says "${r.verdict}" — ${r.detail}`);
+  check(r.verdict === "Knocking", `says "${r.verdict}" , ${r.detail}`);
   check(Math.abs(r.knockHz - 6) < 1.5, `rate ${r.knockHz.toFixed(1)} is about 6`);
 }
 

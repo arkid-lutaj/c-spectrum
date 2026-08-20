@@ -1,5 +1,5 @@
 /*
- * C-Spectrum — cs_thread.c
+ * C-Spectrum , cs_thread.c
  */
 
 #include "cs_thread.h"

@@ -642,8 +642,7 @@ static void draw_panel(const CsEngine *e, const CsSource *src, int x, int y,
 
 /* ---- top bar ---- */
 
-static void draw_top(const CsEngine *e, View view, bool paused, bool crt,
-                     bool logging)
+static void draw_top(const CsEngine *e, View view, bool paused, bool logging)
 {
     DrawRectangle(0, 0, WIN_W, TOP_H, C_PANEL);
     DrawLine(0, TOP_H, WIN_W, TOP_H, C_LINE);
@@ -670,10 +669,10 @@ static void draw_top(const CsEngine *e, View view, bool paused, bool crt,
     /* Toggles on the right. */
     int rx = WIN_W - 20;
     const struct { const char *nm; bool on; } toggles[] = {
-        { "LOG", logging }, { "CRT", crt }, { "PAUSED", paused },
+        { "LOG", logging }, { "PAUSED", paused },
     };
-    for (int i = 0; i < 3; i++) {
-        if (i == 2 && !paused) continue;
+    for (int i = 0; i < 2; i++) {
+        if (i == 1 && !paused) continue;
         const int tw = MeasureText(toggles[i].nm, 10) + 12;
         rx -= tw + 6;
         const Color c = toggles[i].on ? C_OK : C_FAINT;
@@ -690,11 +689,11 @@ static void draw_top(const CsEngine *e, View view, bool paused, bool crt,
  * Used by the live loop and by capture mode, so a screenshot is guaranteed to
  * be the same picture the program actually draws. */
 static void draw_frame(const CsEngine *e, const CsSource *src, View view,
-                       const CsTelemetry *tel, bool paused, bool crt_on)
+                       const CsTelemetry *tel, bool paused)
 {
     ClearBackground(C_BG);
 
-    draw_top(e, view, paused, crt_on, tel && !cs_telemetry_paused(tel));
+    draw_top(e, view, paused, tel && !cs_telemetry_paused(tel));
     draw_panel(e, src, 0, TOP_H, PANEL_W, WIN_H - TOP_H - BOT_H, tel);
 
     const int px = PANEL_W + 24;
@@ -717,7 +716,7 @@ static void draw_frame(const CsEngine *e, const CsSource *src, View view,
     DrawRectangle(0, WIN_H - BOT_H, WIN_W, BOT_H, C_PANEL);
     DrawLine(0, WIN_H - BOT_H, WIN_W, WIN_H - BOT_H, C_LINE);
     DrawText("1-5 / TAB view    SPACE pause    F high-pass    "
-             "L logging    R relearn baseline    C crt    ESC quit",
+             "L logging    R relearn baseline    ESC quit",
              20, WIN_H - 20, 10, C_FAINT);
 }
 
@@ -751,7 +750,7 @@ static void run_capture(CsEngine *engine, CsSource *src, const char *dir,
 
     for (int v = 0; v < VIEW_COUNT; v++) {
         BeginTextureMode(rt);
-        draw_frame(engine, src, (View)v, tel, false, false);
+        draw_frame(engine, src, (View)v, tel, false);
         EndTextureMode();
 
         Image img = LoadImageFromTexture(rt.texture);
@@ -832,26 +831,17 @@ int cs_run_gui(const CsConfig *cfg_in, const CsSourceSpec *spec_in,
     /* raylib's clock, so the source pacing and the frames share a timebase. */
     cs_source_set_clock(&src, GetTime);
 
+    /* Offscreen target, used by capture mode so a screenshot comes out at the
+     * size we chose rather than at the display's scaling factor. */
     RenderTexture2D rt = LoadRenderTexture(WIN_W, WIN_H);
-    Shader crt = LoadShader(0, "shaders/crt.fs");
-    const bool have_crt = (crt.id > 0);
-    int loc_res = -1, loc_time = -1;
-    if (have_crt) {
-        loc_res  = GetShaderLocation(crt, "resolution");
-        loc_time = GetShaderLocation(crt, "time");
-        float res[2] = { (float)WIN_W, (float)WIN_H };
-        SetShaderValue(crt, loc_res, res, SHADER_UNIFORM_VEC2);
-    }
 
     View view = VIEW_SPECTRUM;
-    bool crt_on = false;       /* off by default, it's a toy not a feature */
     bool paused = false;
 
     if (cs_gui_capture_dir) {
         src.realtime = false;      /* wind forward as fast as it will go */
         run_capture(engine, &src, cs_gui_capture_dir, cs_gui_capture_at, rt, tel);
 
-        if (have_crt) UnloadShader(crt);
         UnloadRenderTexture(rt);
         CloseWindow();
         cs_report_print(engine, src.name, stdout);
@@ -869,7 +859,6 @@ int cs_run_gui(const CsConfig *cfg_in, const CsSourceSpec *spec_in,
         for (int k = 0; k < VIEW_COUNT; k++)
             if (IsKeyPressed(KEY_ONE + k)) view = (View)k;
 
-        if (IsKeyPressed(KEY_C) && have_crt) crt_on = !crt_on;
         if (IsKeyPressed(KEY_SPACE)) paused = !paused;
         if (IsKeyPressed(KEY_F))
             cs_analysis_set_highpass(&engine->analysis,
@@ -890,30 +879,13 @@ int cs_run_gui(const CsConfig *cfg_in, const CsSourceSpec *spec_in,
         }
 
         /* ---- draw ---- */
-        if (crt_on && have_crt) {
-            const float t = (float)GetTime();
-            SetShaderValue(crt, loc_time, &t, SHADER_UNIFORM_FLOAT);
-            BeginTextureMode(rt);
-        } else {
-            BeginDrawing();
-        }
+        BeginDrawing();
 
-        draw_frame(engine, &src, view, tel, paused, crt_on);
+        draw_frame(engine, &src, view, tel, paused);
 
         char fps[32];
         snprintf(fps, sizeof fps, "%d fps", GetFPS());
         DrawText(fps, WIN_W - MeasureText(fps, 10) - 20, WIN_H - 20, 10, C_FAINT);
-
-        if (crt_on && have_crt) {
-            EndTextureMode();
-            BeginDrawing();
-            ClearBackground(BLACK);
-            BeginShaderMode(crt);
-            DrawTextureRec(rt.texture,
-                (Rectangle){ 0, 0, (float)rt.texture.width, -(float)rt.texture.height },
-                (Vector2){ 0, 0 }, WHITE);
-            EndShaderMode();
-        }
 
         EndDrawing();
 
@@ -923,7 +895,6 @@ int cs_run_gui(const CsConfig *cfg_in, const CsSourceSpec *spec_in,
         }
     }
 
-    if (have_crt) UnloadShader(crt);
     UnloadRenderTexture(rt);
     CloseWindow();
 

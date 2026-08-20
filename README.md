@@ -4,7 +4,7 @@
 
 Written in C11 — real-time DSP, statistical process control and envelope analysis in about 4,900 lines, with 1,400 more of tests. The analysis core depends only on a FFT (KissFFT) and an audio backend (miniaudio); raylib is used for the window and is optional.
 
-[**Live demo**](https://arkid-lutaj.github.io/c-spectrum/) · [**How it works**](docs/DESIGN.md)
+[**Play with it in your browser**](https://arkid-lutaj.github.io/c-spectrum/spindoctor/) · [**Live demo**](https://arkid-lutaj.github.io/c-spectrum/) · [**How it works**](docs/DESIGN.md)
 
 ![control chart](docs/assets/5-chart.png)
 
@@ -78,6 +78,36 @@ Five views over the same data. `1`–`5` or `Tab` to switch.
 | **Waterfall** — spectrum against time. You can watch the resonance band light up as the fault grows. | **Waveform** — the raw signal, drawn min/max per column so nothing is aliased away. |
 
 The left panel is always there: current state, every feature's distance from its baseline, and the diagnosis. When an alarm fires, the reason is on screen, not buried in a log.
+
+## SpinDoctor — the browser version
+
+**[arkid-lutaj.github.io/c-spectrum/spindoctor](https://arkid-lutaj.github.io/c-spectrum/spindoctor/)**
+
+Point your mic at a fan, a washing machine, a drill, or just tap the desk. It
+tells you whether it sounds smooth, and how fast anything is knocking. You can
+drop in an audio file instead, and there's a "learn this sound" button that
+does the baseline thing — learn your fan, then hold a finger near a blade and
+watch it notice.
+
+It's the C in this repository compiled to WebAssembly with emscripten, not a
+JavaScript rewrite, so there's one implementation of the DSP rather than two
+that quietly disagree. The audio never leaves the page.
+
+```bash
+# needs emscripten on PATH; the built output is committed, so this is
+# only needed if you change the C
+./web/build.sh
+node web/test_wasm.mjs     # wasm agrees with the native build
+node web/test_page.mjs     # the page reaches the right verdicts
+```
+
+One thing worth knowing, because it's a nice illustration of why a single
+number isn't enough: envelope prominence alone calls a steady two-tone hum
+"knocking". Prominence is peak-over-median, and the little that leaks through
+the envelope band from a periodic signal is *perfectly* periodic, so it scores
+25 out of a possible ~50 on nearly no energy. The verdict therefore also
+requires the sound to be spiky, because knocking means impacts and impacts are
+short and sharp. `web/test_page.mjs` pins that case.
 
 ## Usage
 

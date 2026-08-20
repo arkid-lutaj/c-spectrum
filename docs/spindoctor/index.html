@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SpinDoctor</title>
+<meta name="description" content="Point your mic at something that spins and find out if it sounds healthy. The bearing-fault DSP from C-Spectrum, compiled to WebAssembly.">
+<style>
+  :root {
+    --bg:    #10131a;
+    --card:  #171c26;
+    --line:  #262d3b;
+    --text:  #dfe6f2;
+    --dim:   #8794a8;
+    --faint: #4a5568;
+    --good:  #5fd39a;
+    --busy:  #ffc861;
+    --bad:   #ff7a6e;
+    --cool:  #6fc3ea;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 ui-rounded, "Segoe UI", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 620px; margin: 0 auto; padding: 40px 20px 60px; }
+
+  h1 { font-size: 40px; margin: 0; letter-spacing: -1px; }
+  h1 .dot { color: var(--good); }
+  .sub { color: var(--dim); margin: 6px 0 28px; font-size: 17px; }
+
+  /* --- buttons --- */
+  .row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+  button {
+    font: inherit; font-size: 16px; cursor: pointer;
+    background: var(--card); color: var(--text);
+    border: 1px solid var(--line); border-radius: 12px;
+    padding: 13px 20px; transition: .15s;
+  }
+  button:hover:not(:disabled) { border-color: var(--cool); color: var(--cool); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.go { background: var(--good); color: #0b1a13; border-color: var(--good);
+              font-weight: 600; }
+  button.go:hover { filter: brightness(1.08); color: #0b1a13; }
+  button.stop { background: var(--bad); color: #2a0f0c; border-color: var(--bad);
+                font-weight: 600; }
+  button.stop:hover { filter: brightness(1.08); color: #2a0f0c; }
+
+  /* --- the big card --- */
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 18px; padding: 28px 24px; text-align: center;
+    position: relative; overflow: hidden;
+  }
+  .card.drag { border-color: var(--cool); background: #1a2330; }
+
+  .verdict { font-size: 44px; font-weight: 700; letter-spacing: -1px;
+             line-height: 1.1; margin: 4px 0 2px; }
+  .detail  { color: var(--dim); font-size: 17px; min-height: 26px; }
+
+  canvas.wave { width: 100%; height: 90px; display: block; margin: 18px 0 4px; }
+
+  /* --- meters --- */
+  .meters { margin-top: 20px; display: grid; gap: 12px; }
+  .meter { display: grid; grid-template-columns: 92px 1fr 52px;
+           align-items: center; gap: 12px; font-size: 14px; }
+  .meter .name { color: var(--dim); text-align: left; }
+  .meter .track { height: 8px; background: #0d1017; border-radius: 99px;
+                  overflow: hidden; }
+  .meter .fill { height: 100%; width: 0; border-radius: 99px;
+                 transition: width .1s linear, background .2s; }
+  .meter .val { color: var(--dim); text-align: right;
+                font-variant-numeric: tabular-nums; }
+
+  /* --- knock strip --- */
+  canvas.knock { width: 100%; height: 62px; display: block; margin-top: 16px;
+                 border-radius: 8px; background: #0d1017; }
+  .striplabel { display: flex; justify-content: space-between;
+                color: var(--faint); font-size: 11px; margin-top: 4px; }
+
+  /* --- misc --- */
+  .hint { color: var(--faint); font-size: 14px; margin-top: 22px; text-align: center; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+           margin-top: 10px; }
+  .chip { background: var(--card); border: 1px solid var(--line);
+          border-radius: 99px; padding: 5px 13px; font-size: 13px; color: var(--dim); }
+
+  .learnbar { margin-top: 16px; display: none; }
+  .learnbar.on { display: block; }
+  .learnbar .track { height: 6px; background: #0d1017; border-radius: 99px;
+                     overflow: hidden; }
+  .learnbar .fill { height: 100%; width: 0; background: var(--cool); }
+
+  footer { margin-top: 46px; padding-top: 22px; border-top: 1px solid var(--line);
+           color: var(--faint); font-size: 13.5px; }
+  footer a { color: var(--dim); }
+  footer p { margin: 0 0 10px; }
+
+  .err { color: var(--bad); font-size: 14px; margin-top: 12px; min-height: 20px; }
+
+  @media (max-width: 480px) {
+    h1 { font-size: 32px; }
+    .verdict { font-size: 34px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>SpinDoctor<span class="dot">.</span></h1>
+  <p class="sub">Point your mic at something that spins. Find out if it sounds healthy.</p>
+
+  <div class="row">
+    <button id="mic" class="go">Listen</button>
+    <button id="demo">Play a broken bearing</button>
+    <button id="file">Use a file</button>
+    <input type="file" id="fileInput" accept="audio/*" hidden>
+  </div>
+
+  <div class="card" id="card">
+    <div class="verdict" id="verdict">Ready</div>
+    <div class="detail" id="detail">Press Listen, or drop an audio file anywhere on this page.</div>
+
+    <canvas class="wave" id="wave" width="1160" height="180"></canvas>
+
+    <div class="meters">
+      <div class="meter">
+        <span class="name">loudness</span>
+        <span class="track"><span class="fill" id="m-level"></span></span>
+        <span class="val" id="v-level">–</span>
+      </div>
+      <div class="meter">
+        <span class="name">spikiness</span>
+        <span class="track"><span class="fill" id="m-spike"></span></span>
+        <span class="val" id="v-spike">–</span>
+      </div>
+    </div>
+
+    <canvas class="knock" id="knock" width="1160" height="124"></canvas>
+    <div class="striplabel"><span>0</span><span>knock rate, per second</span><span>60</span></div>
+
+    <div class="learnbar" id="learnbar">
+      <div class="track"><span class="fill" id="learnfill"></span></div>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:16px; justify-content:center">
+    <button id="learn" disabled>Learn this sound</button>
+  </div>
+
+  <p class="hint">things to try</p>
+  <div class="chips">
+    <span class="chip">tap the desk</span>
+    <span class="chip">a desk fan</span>
+    <span class="chip">your laptop fan</span>
+    <span class="chip">rub your hands</span>
+    <span class="chip">a washing machine</span>
+    <span class="chip">whistle</span>
+  </div>
+
+  <div class="err" id="err"></div>
+
+  <footer>
+    <p>
+      This is the real thing, not a lookalike. The signal processing is the
+      C code from <a href="https://github.com/arkid-lutaj/c-spectrum">C-Spectrum</a>
+      compiled to WebAssembly — same FFT, same filters, same envelope
+      analysis that finds a bearing defect frequency.
+    </p>
+    <p>
+      <strong>Knock rate</strong> comes from envelope demodulation: it band-passes
+      the high frequencies, rectifies, and transforms what's left, which turns
+      "a resonance being struck repeatedly" back into a plain number.
+      <strong>Spikiness</strong> is kurtosis — how much the signal is made of
+      sharp peaks rather than a steady hum.
+    </p>
+    <p>
+      Nothing leaves your machine; the audio is processed in the page.
+      <a href="../">The serious version</a> ·
+      <a href="https://github.com/arkid-lutaj/c-spectrum">source</a>
+    </p>
+  </footer>
+</div>
+
+<script src="cspectrum.js"></script>
+<script>
+"use strict";
+
+const $ = (id) => document.getElementById(id);
+const FFT = 2048, HOP = 512;
+
+let M = null;          // wasm module
+let api = null;
+let ctx = null;        // AudioContext
+let node = null;       // worklet forwarding samples
+let srcNode = null;    // whatever is feeding it
+let stream = null;     // mic stream
+let running = false;
+let learning = false;
+
+let latest = { level: -120, spike: 0, knockHz: 0, prom: 0, state: -1, health: 0 };
+let wavebuf = new Float32Array(1024);
+
+/* ---------- wasm ---------- */
+
+async function boot() {
+  M = await createCSpectrum();
+  const w = (n, r, a) => M.cwrap(n, r, a);
+  api = {
+    init:    w("csw_init", "number", ["number","number","number","number","number"]),
+    inPtr:   w("csw_input_ptr", "number", []),
+    inCap:   w("csw_input_cap", "number", []),
+    push:    w("csw_push", "number", ["number"]),
+    feature: w("csw_feature", "number", ["number"]),
+    featurePeak: w("csw_feature_peak", "number", ["number"]),
+    envRun:  w("csw_analyse_envelope", null, []),
+    envReady:w("csw_env_ready", "number", []),
+    envHz:   w("csw_env_hz", "number", []),
+    envProm: w("csw_env_prominence", "number", []),
+    envSpec: w("csw_env_spectrum", "number", []),
+    envLen:  w("csw_env_spectrum_len", "number", []),
+    envBin:  w("csw_env_bin_hz", "number", []),
+    monStart:w("csw_monitor_start", null, []),
+    monStop: w("csw_monitor_stop", null, []),
+    state:   w("csw_state", "number", []),
+    health:  w("csw_health", "number", []),
+    progress:w("csw_progress", "number", []),
+    worst:   w("csw_worst_feature", "number", []),
+    free:    w("csw_free", null, []),
+  };
+}
+
+/* ---------- audio ---------- */
+
+/* A worklet that does nothing but hand samples to the main thread, where the
+   wasm lives. Keeping the module off the audio thread costs one buffer of
+   latency and saves a lot of plumbing. */
+const WORKLET = `
+class Tap extends AudioWorkletProcessor {
+  process(inputs) {
+    const ch = inputs[0] && inputs[0][0];
+    if (ch && ch.length) this.port.postMessage(ch.slice(0));
+    return true;
+  }
+}
+registerProcessor('tap', Tap);
+`;
+
+async function ensureContext() {
+  if (ctx) return;
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const url = URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
+  await ctx.audioWorklet.addModule(url);
+  URL.revokeObjectURL(url);
+}
+
+function startEngine() {
+  if (!api.init(Math.round(ctx.sampleRate), FFT, HOP, 1500, 8000))
+    throw new Error("could not start the analyser");
+  learning = false;
+  spikeHold = 0;
+  $("learnbar").classList.remove("on");
+  $("learn").disabled = false;
+  $("learn").textContent = "Learn this sound";
+}
+
+function makeTap() {
+  const n = new AudioWorkletNode(ctx, "tap");
+  const ptr = api.inPtr();
+  const cap = api.inCap();
+
+  n.port.onmessage = (e) => {
+    const buf = e.data;
+    if (!running || !buf.length) return;
+
+    const len = Math.min(buf.length, cap);
+    M.HEAPF32.set(buf.subarray(0, len), ptr / 4);
+    api.push(len);
+
+    wavebuf = buf;
+  };
+  return n;
+}
+
+async function stopAll() {
+  running = false;
+  if (srcNode) { try { srcNode.stop(); } catch (_) {} try { srcNode.disconnect(); } catch (_) {} srcNode = null; }
+  if (node)    { node.port.onmessage = null; node.disconnect(); node = null; }
+  if (stream)  { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  $("mic").textContent = "Listen";
+  $("mic").className = "go";
+  $("demo").disabled = false;
+  $("file").disabled = false;
+  $("learn").disabled = true;
+  $("learnbar").classList.remove("on");
+  setVerdict("Stopped", "Press Listen to go again.", "var(--dim)");
+}
+
+async function startMic() {
+  $("err").textContent = "";
+  try {
+    await ensureContext();
+    await ctx.resume();
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+  } catch (e) {
+    $("err").textContent = "No microphone: " + e.message;
+    return;
+  }
+
+  startEngine();
+  node = makeTap();
+  srcNode = ctx.createMediaStreamSource(stream);
+  srcNode.connect(node);
+  // Worklets need a path to the destination to be pulled; a muted gain keeps
+  // it running without feeding the mic back into the speakers.
+  const mute = ctx.createGain();
+  mute.gain.value = 0;
+  node.connect(mute).connect(ctx.destination);
+
+  running = true;
+  $("mic").textContent = "Stop";
+  $("mic").className = "stop";
+  $("demo").disabled = true;
+  $("file").disabled = true;
+  setVerdict("Listening", "Make some noise.", "var(--cool)");
+}
+
+/* Plays an AudioBuffer through the analyser, and out of the speakers. */
+function playBuffer(buf, label) {
+  startEngine();
+  node = makeTap();
+
+  srcNode = ctx.createBufferSource();
+  srcNode.buffer = buf;
+  srcNode.loop = true;
+  srcNode.connect(node);
+  node.connect(ctx.destination);
+  srcNode.start();
+
+  running = true;
+  $("mic").textContent = "Stop";
+  $("mic").className = "stop";
+  $("demo").disabled = true;
+  $("file").disabled = true;
+  setVerdict("Playing", label, "var(--cool)");
+}
+
+/* A bearing with a spalled outer race: impacts at 107 Hz, each one ringing a
+   3.8 kHz resonance, over a bit of shaft rumble and noise. Same recipe as the
+   simulator in the C project. */
+function makeBrokenBearing() {
+  const sr = ctx.sampleRate;
+  const secs = 4;
+  const buf = ctx.createBuffer(1, sr * secs, sr);
+  const d = buf.getChannelData(0);
+
+  const RATE = 107, RES = 3800, DECAY = 620;
+  let next = 0;
+  let s = 22222 >>> 0;
+  const rnd = () => {
+    s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0;
+    return s / 2147483648 - 1;
+  };
+
+  let lastImpact = -1;
+  for (let i = 0; i < d.length; i++) {
+    const t = i / sr;
+    while (t >= next) { lastImpact = next; next += 1 / RATE; }
+
+    let v = 0.05 * Math.sin(2 * Math.PI * 30 * t)     // shaft
+          + 0.02 * Math.sin(2 * Math.PI * 60 * t)
+          + 0.015 * (rnd() + rnd() + rnd());          // noise
+
+    if (lastImpact >= 0) {
+      const age = t - lastImpact;
+      v += 0.55 * Math.exp(-age * DECAY) * Math.sin(2 * Math.PI * RES * age);
+    }
+    d[i] = v * 0.8;
+  }
+  return buf;
+}
+
+async function playDemo() {
+  await ensureContext();
+  await ctx.resume();
+  playBuffer(makeBrokenBearing(), "a bearing with a damaged outer race, looping");
+}
+
+async function playFile(f) {
+  $("err").textContent = "";
+  try {
+    await ensureContext();
+    await ctx.resume();
+    const buf = await ctx.decodeAudioData(await f.arrayBuffer());
+    playBuffer(buf, f.name);
+    srcNode.loop = false;
+    srcNode.onended = () => { if (running) stopAll(); };
+  } catch (e) {
+    $("err").textContent = "Could not read that file: " + e.message;
+  }
+}
+
+/* ---------- verdict ---------- */
+
+function setVerdict(big, small, colour) {
+  $("verdict").textContent = big;
+  $("verdict").style.color = colour || "var(--text)";
+  $("detail").textContent = small;
+}
+
+function decide() {
+  const lvl = latest.level, spike = latest.spike;
+  const hz = latest.knockHz, prom = latest.prom;
+
+  if (lvl < -58) {
+    setVerdict("Too quiet", "Get closer, or turn it up.", "var(--faint)");
+    return;
+  }
+
+  // Two conditions, and it needs both.
+  //
+  // A prominent envelope peak means something repeats. On its own that is not
+  // enough: prominence is peak-over-median, so a steady hum whose harmonics
+  // barely reach the envelope band still scores high, because the little that
+  // does get through is perfectly periodic. A pure two-tone hum reads 25 on
+  // prominence and is obviously not knocking.
+  //
+  // So also require the sound to be spiky. Knocking means impacts, impacts are
+  // short and sharp, and that is what kurtosis measures. A hum sits below 2, a
+  // fan around 2.5, and real impacts run 5 and up.
+  if (prom > 10 && spike > 3.2 && hz >= 3 && hz <= 400) {
+    const perMin = Math.round(hz * 60);
+    setVerdict("Knocking", `${hz.toFixed(1)} times a second · ${perMin} per minute`, "var(--bad)");
+    return;
+  }
+
+  if (spike > 6) {
+    setVerdict("Rough", "Sharp, uneven sound. Nothing repeating steadily though.", "var(--busy)");
+    return;
+  }
+
+  setVerdict("Smooth", "Steady. Nothing knocking.", "var(--good)");
+}
+
+function decideLearned() {
+  const st = latest.state;
+  if (st === 0) {
+    const p = api.progress();
+    $("learnfill").style.width = (p * 100).toFixed(0) + "%";
+    setVerdict("Learning", "Keep it running just like this…", "var(--cool)");
+    return;
+  }
+  $("learnbar").classList.remove("on");
+
+  const names = ["loudness", "peakiness", "spikiness", "pitch", "roughness", "hiss"];
+  const w = api.worst();
+
+  if (st === 3)      setVerdict("Changed!", `That's different — mostly the ${names[w]}.`, "var(--bad)");
+  else if (st === 2) setVerdict("Hmm", `Drifting a bit — the ${names[w]}.`, "var(--busy)");
+  else               setVerdict("Same as before", "Sounds like what it learned.", "var(--good)");
+}
+
+/* ---------- drawing ---------- */
+
+function fit(cv) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const r = cv.getBoundingClientRect();
+  if (!r.width) return null;
+  const h = parseInt(getComputedStyle(cv).height, 10);
+  if (cv.width !== Math.round(r.width * dpr) || cv.height !== Math.round(h * dpr)) {
+    cv.width = Math.round(r.width * dpr);
+    cv.height = Math.round(h * dpr);
+  }
+  const g = cv.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { g, w: r.width, h };
+}
+
+function drawWave() {
+  const f = fit($("wave"));
+  if (!f) return;
+  const { g, w, h } = f;
+  g.clearRect(0, 0, w, h);
+
+  const mid = h / 2;
+  g.strokeStyle = "#242c3a";
+  g.beginPath(); g.moveTo(0, mid); g.lineTo(w, mid); g.stroke();
+
+  if (!running || !wavebuf.length) return;
+
+  let peak = 1e-4;
+  for (let i = 0; i < wavebuf.length; i++) peak = Math.max(peak, Math.abs(wavebuf[i]));
+  const gain = (h * 0.44) / Math.max(peak, 0.02);
+
+  const col = getComputedStyle($("verdict")).color;
+  g.strokeStyle = col;
+  g.lineWidth = 2;
+  g.beginPath();
+  const step = wavebuf.length / w;
+  for (let px = 0; px < w; px++) {
+    const i0 = Math.floor(px * step);
+    const i1 = Math.max(i0 + 1, Math.floor((px + 1) * step));
+    let lo = 1e9, hi = -1e9;
+    for (let i = i0; i < i1 && i < wavebuf.length; i++) {
+      if (wavebuf[i] < lo) lo = wavebuf[i];
+      if (wavebuf[i] > hi) hi = wavebuf[i];
+    }
+    if (lo > hi) continue;
+    g.moveTo(px + 0.5, mid - hi * gain);
+    g.lineTo(px + 0.5, mid - lo * gain + 0.5);
+  }
+  g.stroke();
+}
+
+/* The envelope spectrum, i.e. how strongly the sound repeats at each rate. */
+function drawKnock() {
+  const f = fit($("knock"));
+  if (!f) return;
+  const { g, w, h } = f;
+  g.clearRect(0, 0, w, h);
+
+  if (!running || !api.envReady()) {
+    g.fillStyle = "#3a4453";
+    g.font = "13px system-ui, sans-serif";
+    g.textAlign = "center";
+    g.fillText(running ? "listening…" : "", w / 2, h / 2 + 4);
+    g.textAlign = "left";
+    return;
+  }
+
+  const binHz = api.envBin();
+  const len = api.envLen();
+  const ptr = api.envSpec();
+  if (!ptr || !len || binHz <= 0) return;
+
+  const spec = M.HEAPF32.subarray(ptr / 4, ptr / 4 + len);
+  const FMAX = 60;                       // per second, matches the labels
+  const nShow = Math.min(len, Math.floor(FMAX / binHz));
+  if (nShow < 2) return;
+
+  // gridlines every 10 per second
+  g.strokeStyle = "#1b2230";
+  for (let f10 = 10; f10 < FMAX; f10 += 10) {
+    const gx = (f10 / FMAX) * w;
+    g.beginPath(); g.moveTo(gx, 0); g.lineTo(gx, h); g.stroke();
+  }
+
+  const hot = latest.prom > 10;
+  g.fillStyle = hot ? "rgba(255,122,110,0.9)" : "rgba(111,195,234,0.55)";
+
+  for (let px = 0; px < w; px++) {
+    const k0 = Math.floor((px / w) * nShow);
+    const k1 = Math.max(k0 + 1, Math.floor(((px + 1) / w) * nShow));
+    let m = 0;
+    for (let k = k0; k < k1 && k < nShow; k++) m = Math.max(m, spec[k]);
+    const bh = m * h * 0.88;
+    if (bh > 0.5) g.fillRect(px, h - bh, 1, bh);
+  }
+
+  // mark the peak
+  if (hot && latest.knockHz > 0 && latest.knockHz < FMAX) {
+    const gx = (latest.knockHz / FMAX) * w;
+    g.strokeStyle = "#ff7a6e";
+    g.setLineDash([3, 3]);
+    g.beginPath(); g.moveTo(gx, 0); g.lineTo(gx, h); g.stroke();
+    g.setLineDash([]);
+  }
+}
+
+function setMeter(fillId, valId, frac, text, colour) {
+  const f = Math.max(0, Math.min(1, frac));
+  const el = $(fillId);
+  el.style.width = (f * 100).toFixed(1) + "%";
+  el.style.background = colour;
+  $(valId).textContent = text;
+}
+
+/* ---------- loop ---------- */
+
+let envTick = 0;
+let spikeHold = 0;
+
+function readState() {
+  latest.level = api.feature(0);            // rms in dB, current block
+
+  // Spikiness uses the highest value since the last frame, not the current
+  // one, then decays. Impacts are sparse: tapping six times a second lands in
+  // about one block in sixteen, so the value you happen to catch is usually
+  // the quiet gap between taps. Taking the peak and letting it fall off over
+  // roughly a second is also just nicer to look at than a number that flickers.
+  const kmax = api.featurePeak(2);
+  spikeHold = Math.max(kmax, spikeHold * 0.94);
+  latest.spike = spikeHold;
+
+  latest.state = api.state();
+  latest.health = api.health();
+
+  // the envelope costs an FFT, so a few times a second is plenty
+  if (++envTick >= 8) {
+    envTick = 0;
+    api.envRun();
+    latest.knockHz = api.envHz();
+    latest.prom = api.envProm();
+  }
+}
+
+function frame() {
+  if (running) {
+    readState();
+
+    if (learning && latest.state >= 0) decideLearned();
+    else decide();
+
+    const lvlFrac = (latest.level + 80) / 80;
+    setMeter("m-level", "v-level", lvlFrac,
+             latest.level > -119 ? latest.level.toFixed(0) + " dB" : "–",
+             lvlFrac > 0.75 ? "var(--busy)" : "var(--cool)");
+
+    const spikeFrac = (latest.spike - 1.5) / 12;
+    setMeter("m-spike", "v-spike", spikeFrac, latest.spike.toFixed(1),
+             latest.spike > 6 ? "var(--bad)" : "var(--good)");
+  }
+
+  drawWave();
+  drawKnock();
+  requestAnimationFrame(frame);
+}
+
+/* ---------- wiring ---------- */
+
+$("mic").onclick = () => (running ? stopAll() : startMic());
+$("demo").onclick = playDemo;
+$("file").onclick = () => $("fileInput").click();
+$("fileInput").onchange = (e) => { if (e.target.files[0]) playFile(e.target.files[0]); };
+
+$("learn").onclick = () => {
+  if (!running) return;
+  if (learning) {
+    learning = false;
+    api.monStop();
+    $("learn").textContent = "Learn this sound";
+    $("learnbar").classList.remove("on");
+  } else {
+    learning = true;
+    api.monStart();
+    $("learn").textContent = "Forget it";
+    $("learnbar").classList.add("on");
+    $("learnfill").style.width = "0%";
+  }
+};
+
+// drag and drop anywhere
+document.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  $("card").classList.add("drag");
+});
+document.addEventListener("dragleave", () => $("card").classList.remove("drag"));
+document.addEventListener("drop", (e) => {
+  e.preventDefault();
+  $("card").classList.remove("drag");
+  const f = e.dataTransfer.files[0];
+  if (f) playFile(f);
+});
+
+boot().then(() => {
+  frame();
+}).catch((e) => {
+  $("err").textContent = "Could not load the analyser: " + e.message;
+});
+</script>
+</body>
+</html>

@@ -86,6 +86,28 @@ jobs:
       - name: build
         run: cmake --build build --config Release --parallel
 
+  # The WebAssembly build behind the SpinDoctor demo. Rebuilds it from source
+  # rather than trusting the committed copy, then runs both node test suites
+  # against the fresh build, so the page and the wasm can't drift apart.
+  web:
+    name: wasm demo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+
+      - name: build wasm
+        run: ./web/build.sh
+
+      - name: wasm gives the same answers as the native build
+        run: node web/test_wasm.mjs
+
+      - name: the demo page reaches the right verdicts
+        run: node web/test_page.mjs
+
   # Warnings are errors here rather than in the normal build, so a warning
   # gets noticed without making the project annoying to hack on locally.
   strict:

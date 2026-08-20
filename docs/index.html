@@ -144,7 +144,8 @@
     works out <em>which part</em> of the bearing is producing the noise.
   </p>
   <div class="links">
-    <a class="primary" href="https://github.com/arkid-lutaj/c-spectrum">Source on GitHub</a>
+    <a class="primary" href="spindoctor/">Try it on your own sounds</a>
+    <a href="https://github.com/arkid-lutaj/c-spectrum">Source on GitHub</a>
     <a href="https://github.com/arkid-lutaj/c-spectrum/blob/main/docs/DESIGN.md">How it works</a>
   </div>
 </header>
@@ -187,6 +188,27 @@
   </div>
 
   <p class="note" id="caption"></p>
+</section>
+
+<section>
+  <h2>Play with it</h2>
+  <h3>SpinDoctor</h3>
+  <p>
+    The same analysis, compiled to WebAssembly and pointed at your microphone.
+    Hold it near a fan, a washing machine, a drill, or just tap the desk, and
+    it tells you whether it sounds smooth and how fast anything is knocking.
+    Drop in an audio file if you'd rather.
+  </p>
+  <p>
+    <a href="spindoctor/" style="display:inline-block;border:1px solid var(--data);
+       color:var(--data);text-decoration:none;padding:10px 20px;border-radius:4px">
+       Open SpinDoctor &rarr;</a>
+  </p>
+  <p class="note">
+    It is the C code in this repository compiled with emscripten, not a
+    JavaScript rewrite, so there is one implementation of the DSP and not two
+    that quietly disagree.
+  </p>
 </section>
 
 <section>

@@ -1,6 +1,11 @@
 build/
 build-*/
 *.exe
+
+# the wasm build output is committed on purpose, so the demo page works
+# from a plain checkout with no emscripten
+!docs/spindoctor/cspectrum.js
+!docs/spindoctor/cspectrum.wasm
 *.o
 *.a
 *.csv
